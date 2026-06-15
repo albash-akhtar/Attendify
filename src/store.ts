@@ -1,7 +1,6 @@
 import { supabase } from './supabaseClient';
 import { Employee, AttendanceRecord, WFHRequest, AccountRequest } from './types';
 
-// ========== SAFE SUPABASE HELPER ==========
 const db = {
   from: (table: string) => {
     if (!supabase) return null;
@@ -9,7 +8,6 @@ const db = {
   }
 };
 
-// ========== PAKISTAN LOCAL DATE HELPER (FIXES SYNC BUG) ==========
 function getPKTDateString(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -18,7 +16,6 @@ function getPKTDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
-// ========== LOCATION MAPPING ==========
 export const LOCATION_MAP: Record<string, string> = {
   '103.93.13.182': 'Zone', '103.93.13.18': 'Zone',
   '202.141.254.126': 'QC Center', '157.10.30.235': 'QC Center',
@@ -26,11 +23,9 @@ export const LOCATION_MAP: Record<string, string> = {
 export const ALL_ALLOWED_IPS = ['202.141.254.126', '157.10.30.235', '103.93.13.182', '103.93.13.18'];
 export function getLocationFromIP(ip: string): string { return LOCATION_MAP[ip] || 'Office'; }
 
-// ========== LOCAL CACHE ==========
 function cacheSet(key: string, data: any) { try { localStorage.setItem(key, JSON.stringify(data)); } catch {} }
 function cacheGet<T>(key: string, fallback: T): T { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } }
 
-// ========== EMPLOYEES ==========
 const DEFAULT_EMPLOYEES: Employee[] = [
   { id: 'emp-001', name: 'Abdul Wahab', role: 'admin', pin: '2687', avatar: 'AW' },
   { id: 'emp-002', name: 'Hamza Saeed', role: 'employee', pin: '2345', avatar: 'HS' },
@@ -68,7 +63,6 @@ export async function removeEmployee(empId: string) {
   try { const q = db.from('employees'); if (q) { await q.delete().eq('id', empId); await syncEmployees(); } } catch {}
 }
 
-// ========== ATTENDANCE RECORDS ==========
 export function getAttendanceRecords(): AttendanceRecord[] { return cacheGet('c_rec', []); }
 export function saveAttendanceRecords(r: AttendanceRecord[]) { cacheSet('c_rec', r); }
 
@@ -113,13 +107,11 @@ export async function updateAttendanceRecord(id: string, updates: Partial<Attend
   } catch {}
 }
 
-// FIX: Pure Pakistan Local Date Matcher
 export function getTodayRecord(empId: string): AttendanceRecord | undefined {
   const todayStr = getPKTDateString();
   return getAttendanceRecords().find(r => r.employeeId === empId && r.date === todayStr);
 }
 
-// ========== WFH REQUESTS ==========
 export function getWFHRequests(): WFHRequest[] { return cacheGet('c_wfh', []); }
 
 async function syncWFH() {
@@ -154,14 +146,12 @@ export async function updateWFHRequest(id: string, updates: Partial<WFHRequest>)
   } catch {}
 }
 
-// FIX: Pure Pakistan Local Date Matcher
 export function getTodayWFHRequest(empId: string): WFHRequest | undefined {
   const todayStr = getPKTDateString();
   return getWFHRequests().find(r => r.employeeId === empId && r.date === todayStr);
 }
 export function getPendingWFHRequests(): WFHRequest[] { return getWFHRequests().filter(r => r.status === 'pending'); }
 
-// ========== ACCOUNT REQUESTS ==========
 export function getAccountRequests(): AccountRequest[] { return cacheGet('c_acct', []); }
 export function getPendingAccountRequests(): AccountRequest[] { return getAccountRequests().filter(r => r.status === 'pending'); }
 
@@ -194,13 +184,11 @@ export async function updateAccountRequest(id: string, updates: Partial<AccountR
   } catch {}
 }
 
-// ========== SETTINGS ==========
 export function getSettings() {
   return cacheGet('c_settings', { officeStartTime: '09:00', lateThresholdMinutes: 15, minHoursForFullDay: 8, minHoursForHalfDay: 4 });
 }
 export function saveSettings(s: any) { cacheSet('c_settings', s); }
 
-// ========== PER-EMPLOYEE TIMING ==========
 export interface EmployeeTiming {
   employeeId: string; officeStartTime: string; lateThresholdMinutes: number;
   minHoursForFullDay: number; minHoursForHalfDay: number;
@@ -224,7 +212,7 @@ export async function saveAllEmployeeTimings(t: Record<string, EmployeeTiming>) 
   cacheSet('c_timings', t);
   try {
     const q = db.from('employee_timings'); if (!q) return;
-    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.minHoursForFullDay, min_hours_half_day: v.minHoursForHalfDay }));
+    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.min_hours_full_day, min_hours_half_day: v.min_hours_half_day }));
     await q.upsert(rows);
   } catch {}
 }
@@ -235,7 +223,6 @@ export function getEmployeeTiming(empId: string): EmployeeTiming {
   return { employeeId: empId, officeStartTime: g.officeStartTime, lateThresholdMinutes: g.lateThresholdMinutes, minHoursForFullDay: g.minHoursForFullDay, minHoursForHalfDay: g.minHoursForHalfDay };
 }
 
-// ========== ACCESS CONTROL ==========
 const DEFAULT_ACCESS: Record<string, string[]> = {
   ot:['emp-001','emp-005'], ai:['emp-001','emp-005'], analytics:['emp-001','emp-005'],
   settings:['emp-001','emp-005'], pin_change:['emp-001','emp-005'],
@@ -273,14 +260,12 @@ export async function revokeAccess(empId: string, feature: string) {
 export function hasAccess(empId: string, feature: string): boolean { return getAccessControl()[feature]?.includes(empId) || false; }
 export function canSeeOT(empId: string): boolean { return hasAccess(empId, 'ot'); }
 
-// ========== SYNC ALL (call after any write) ==========
 export async function syncAll() {
   try {
     await Promise.all([syncEmployees(), syncRecords(), syncWFH(), syncAccountRequests(), syncTimings(), syncAccess()]);
   } catch {}
 }
 
-// ========== INIT ==========
 export async function initializeApp() {
   try {
     await syncAll();
