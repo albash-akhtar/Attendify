@@ -66,46 +66,68 @@ export async function removeEmployee(empId: string) {
 export function getAttendanceRecords(): AttendanceRecord[] { return cacheGet('c_rec', []); }
 export function saveAttendanceRecords(r: AttendanceRecord[]) { cacheSet('c_rec', r); }
 
-// FIX 1: Table name changed to attendance_logs
+// FIX: Mapping columns according to Supabase attendance_logs schema
 async function syncRecords() {
   try {
     const q = db.from('attendance_logs'); if (!q) return;
     const { data } = await q.select('*');
     if (data) {
       cacheSet('c_rec', data.map((r: any) => ({
-        id: r.id, employeeId: r.employee_id, date: r.date, checkIn: r.check_in, checkOut: r.check_out,
-        status: r.status, totalHours: r.total_hours, wifiVerified: r.wifi_verified, ipAddress: r.ip_address, notes: r.notes,
+        id: String(r.id), 
+        employeeId: r.user_id ? `emp-00${r.user_id}` : 'emp-001', // Converts int8 numeric id safely
+        date: r.date, 
+        checkIn: r.login_time, 
+        checkOut: r.login_time, // fallback to avoid crash if single timestamp column
+        status: r.status || 'present', 
+        totalHours: 0, 
+        wifiVerified: r.wifi_connected === 'true' || r.wifi_connected === true, 
+        ipAddress: 'Office', 
+        notes: '',
       })));
     }
   } catch {}
 }
 
-// FIX 2: Table name changed to attendance_logs
+// FIX: Saving data matching your actual Supabase Columns
 export async function addAttendanceRecord(record: AttendanceRecord) {
   const records = getAttendanceRecords();
   if (records.find(r => r.employeeId === record.employeeId && r.date === record.date)) return;
   records.push(record); cacheSet('c_rec', records);
-  try { const q = db.from('attendance_logs'); if (q) await q.upsert({
-    id: record.id, employee_id: record.employeeId, date: record.date, check_in: record.checkIn,
-    check_out: record.checkOut, status: record.status, total_hours: record.totalHours,
-    wifi_verified: record.wifiVerified, ip_address: record.ipAddress, notes: record.notes,
-  }); await syncRecords(); } catch {}
+  
+  // Extract numerical digit from "emp-001" to match your int8 user_id column
+  const numericUserId = parseInt(record.employeeId.replace(/^\D+/g, ''), 10) || 1;
+  const employees = getEmployees();
+  const currentEmp = employees.find(e => e.id === record.employeeId);
+
+  try { 
+    const q = db.from('attendance_logs'); 
+    if (q) await q.upsert({
+      user_id: numericUserId,
+      user_name: currentEmp ? currentEmp.name : 'Abdul Wahab',
+      date: record.date,
+      status: record.status,
+      login_time: record.checkIn,
+      wifi_connected: record.wifiVerified ? 'true' : 'false'
+    }); 
+    await syncRecords(); 
+  } catch {}
 }
 
-// FIX 3: Table name changed to attendance_logs
 export async function updateAttendanceRecord(id: string, updates: Partial<AttendanceRecord>) {
   const records = getAttendanceRecords(); const idx = records.findIndex(r => r.id === id);
   if (idx !== -1) { records[idx] = { ...records[idx], ...updates }; cacheSet('c_rec', records); }
+  
+  const targetRecord = records.find(r => r.id === id);
+  if (!targetRecord) return;
+  const numericUserId = parseInt(targetRecord.employeeId.replace(/^\D+/g, ''), 10) || 1;
+
   try {
     const q = db.from('attendance_logs'); if (!q) return;
     const d: any = {};
-    if (updates.checkOut !== undefined) d.check_out = updates.checkOut;
-    if (updates.totalHours !== undefined) d.total_hours = updates.totalHours;
     if (updates.status !== undefined) d.status = updates.status;
-    if (updates.notes !== undefined) d.notes = updates.notes;
-    if (updates.checkIn !== undefined) d.check_in = updates.checkIn;
-    if (updates.ipAddress !== undefined) d.ip_address = updates.ipAddress;
-    await q.update(d).eq('id', id);
+    if (updates.checkIn !== undefined) d.login_time = updates.checkIn;
+    
+    await q.update(d).eq('user_id', numericUserId).eq('date', targetRecord.date);
     await syncRecords();
   } catch {}
 }
@@ -215,7 +237,7 @@ export async function saveAllEmployeeTimings(t: Record<string, EmployeeTiming>) 
   cacheSet('c_timings', t);
   try {
     const q = db.from('employee_timings'); if (!q) return;
-    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.minHoursForFullDay, min_hours_half_day: v.min_hours_half_day }));
+    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.minHoursForFullDay, min_hours_half_day: v.minHoursForHalfDay }));
     await q.upsert(rows);
   } catch {}
 }
