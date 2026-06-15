@@ -36,7 +36,6 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
   const [secretFilter, setSecretFilter] = useState('');
   const [secretSaved, setSecretSaved] = useState(false);
 
-  // Secret: Tap version number "3.0" 7 times fast to unlock
   const handleSecretTap = () => {
     if (!canSecret) return;
     tapCountRef.current += 1;
@@ -51,24 +50,40 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
   const handleSecretSave = async () => {
     if (!secretEditRecord) return;
     const clean = { ...secretEditRecord };
-    delete clean._editing; delete clean.checkInTime; delete clean.checkOutTime;
     
+    // ISO Dates extraction based on active state strings
+    const finalCheckIn = secretEditRecord.checkInTime 
+      ? `${secretEditRecord.date}T${secretEditRecord.checkInTime}:00.000` 
+      : null;
+      
+    const finalCheckOut = secretEditRecord.checkOutTime 
+      ? `${secretEditRecord.date}T${secretEditRecord.checkOutTime}:00.000` 
+      : null;
+
     await updateAttendanceRecord(clean.id, {
-      status: clean.status, totalHours: clean.totalHours,
-      checkIn: clean.checkIn, checkOut: clean.checkOut,
-      ipAddress: clean.ipAddress, notes: clean.notes, date: clean.date,
+      status: clean.status, 
+      totalHours: clean.totalHours,
+      checkIn: finalCheckIn, 
+      checkOut: finalCheckOut,
+      ipAddress: clean.ipAddress, 
+      notes: clean.notes, 
+      date: clean.date,
     });
     setSecretSaved(true); setTimeout(() => setSecretSaved(false), 2000);
     setSecretEditRecord(null);
   };
 
   const handleSecretAddRecord = async () => {
+    const d = secretEditRecord?.date || new Date().toISOString().split('T')[0];
+    const finalCheckIn = secretEditRecord?.checkInTime ? `${d}T${secretEditRecord.checkInTime}:00.000` : null;
+    const finalCheckOut = secretEditRecord?.checkOutTime ? `${d}T${secretEditRecord.checkOutTime}:00.000` : null;
+
     const rec = {
       id: `manual-${Date.now()}`,
       employeeId: secretEditRecord?.employeeId || '',
-      date: secretEditRecord?.date || new Date().toISOString().split('T')[0],
-      checkIn: secretEditRecord?.checkIn || null,
-      checkOut: secretEditRecord?.checkOut || null,
+      date: d,
+      checkIn: finalCheckIn,
+      checkOut: finalCheckOut,
       status: secretEditRecord?.status || 'present',
       totalHours: secretEditRecord?.totalHours || 0,
       wifiVerified: true,
@@ -195,24 +210,14 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Check In</label>
               <input type="time" value={secretEditRecord?.checkInTime || ''} 
-                onChange={e => {
-                  const val = e.target.value;
-                  if (!val) { setSecretEditRecord((p:any) => ({...p, checkInTime: '', checkIn: null})); return; }
-                  const d = secretEditRecord?.date || new Date().toISOString().split('T')[0];
-                  setSecretEditRecord((p:any) => ({...p, checkInTime: val, checkIn: `${d}T${val}:00.000`}));
-                }}
+                onChange={e => setSecretEditRecord((p:any) => ({...p, checkInTime: e.target.value || ''}))}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
                         
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Check Out</label>
               <input type="time" value={secretEditRecord?.checkOutTime || ''} 
-                onChange={e => {
-                  const val = e.target.value;
-                  if (!val) { setSecretEditRecord((p:any) => ({...p, checkOutTime: '', checkOut: null})); return; }
-                  const d = secretEditRecord?.date || new Date().toISOString().split('T')[0];
-                  setSecretEditRecord((p:any) => ({...p, checkOutTime: val, checkOut: `${d}T${val}:00.000`}));
-                }}
+                onChange={e => setSecretEditRecord((p:any) => ({...p, checkOutTime: e.target.value || ''}))}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
             <select value={secretEditRecord?.ipAddress || '103.93.13.182'} onChange={e => setSecretEditRecord((p:any) => ({...p, ipAddress: e.target.value}))}
@@ -233,7 +238,6 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
           </div>
           <div className="space-y-1 max-h-96 overflow-y-auto">
             {filtered.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(rec => {
-              // 🚨 YEHI ERROR THA! Maine ghalti se 'r.employeeId' likh diya tha pichli baar jisne crash karaya. Ab theek hai.
               const emp = employees.find(e => e.id === rec.employeeId);
               return (
                 <div key={rec.id} className="flex flex-wrap items-center gap-2 py-2 px-3 bg-slate-50 rounded-lg text-xs">
@@ -293,34 +297,41 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
           })()}
         </div>
 
-        {/* Edit modal */}
+        {/* Edit modal — Completely Refactored Line Items */}
         {secretEditRecord?._editing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg">
               <h3 className="font-semibold text-slate-800 mb-4">Edit Record — {employees.find(e=>e.id===secretEditRecord.employeeId)?.name} — {secretEditRecord.date}</h3>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs text-slate-500 mb-1 block">Status</label>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Status</label>
                   <select value={secretEditRecord.status} onChange={e => setSecretEditRecord((p:any) => ({...p, status: e.target.value}))}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                     <option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option>
                     <option value="half-day">Half Day</option><option value="work-from-home">WFH</option>
-                  </select></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Total Hours</label>
-                  <input type="number" step="0.5" value={secretEditRecord.totalHours || ''} onChange={e => setSecretEditRecord((p:any) => ({...p, totalHours: parseFloat(e.target.value)||0}))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Total Hours</label>
+                  <input type="number" step="0.5" value={secretEditRecord.totalHours || 0} onChange={e => setSecretEditRecord((p:any) => ({...p, totalHours: parseFloat(e.target.value)||0}))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
                 
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">Check In</label>
                   <input type="time" value={secretEditRecord.checkInTime || ''} 
                     onChange={e => {
-                      const val = e.target.value;
-                      if (!val) {
-                        setSecretEditRecord((p:any) => ({...p, checkInTime: '', checkIn: null}));
-                        return;
-                      }
+                      const val = e.target.value || '';
                       setSecretEditRecord((p:any) => {
-                        const baseDate = p.date || new Date().toISOString().split('T')[0];
-                        return {...p, checkInTime: val, checkIn: `${baseDate}T${val}:00.000`};
+                        let nextHours = p.totalHours;
+                        if (val && p.checkOutTime) {
+                          const baseD = p.date || new Date().toISOString().split('T')[0];
+                          const start = new Date(`${baseD}T${val}:00.000`);
+                          const end = new Date(`${baseD}T${p.checkOutTime}:00.000`);
+                          nextHours = Math.max(0, Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100);
+                        }
+                        return { ...p, checkInTime: val, totalHours: nextHours };
                       });
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
@@ -330,38 +341,39 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                   <label className="text-xs text-slate-500 mb-1 block">Check Out</label>
                   <input type="time" value={secretEditRecord.checkOutTime || ''} 
                     onChange={e => {
-                      const val = e.target.value;
-                      // 🔑 RULE: Agar Backspace se khali chorhein, toh values null ho jayengi aur shift live ghumegi!
-                      if (!val) {
-                        setSecretEditRecord((p:any) => ({...p, checkOutTime: '', checkOut: null, totalHours: 0}));
-                        return;
-                      }
+                      const val = e.target.value || '';
                       setSecretEditRecord((p:any) => {
-                        const baseDate = p.date || new Date().toISOString().split('T')[0];
-                        const nextCheckOut = `${baseDate}T${val}:00.000`;
-                        
-                        // Ghantey automatic calculate karein agar Check-In moojud hai
                         let nextHours = p.totalHours;
-                        if (p.checkIn) {
-                          const start = new Date(p.checkIn);
-                          const end = new Date(nextCheckOut);
-                          nextHours = Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100;
+                        if (p.checkInTime && val) {
+                          const baseD = p.date || new Date().toISOString().split('T')[0];
+                          const start = new Date(`${baseD}T${p.checkInTime}:00.000`);
+                          const end = new Date(`${baseD}T${val}:00.000`);
+                          nextHours = Math.max(0, Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100);
+                        } else if (!val) {
+                          nextHours = 0; // Clear karne par live shift target hours automatically 0
                         }
-                        return {...p, checkOutTime: val, checkOut: nextCheckOut, totalHours: nextHours};
+                        return { ...p, checkOutTime: val, totalHours: nextHours };
                       });
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                 </div>
 
-                <div><label className="text-xs text-slate-500 mb-1 block">Location</label>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Location</label>
                   <select value={secretEditRecord.ipAddress} onChange={e => setSecretEditRecord((p:any) => ({...p, ipAddress: e.target.value}))}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="103.93.13.182">Zone</option><option value="103.93.13.18">Zone</option>
-                    <option value="202.141.254.126">QC Center</option><option value="157.10.30.235">QC Center (2)</option>
-                  </select></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Date</label>
-                  <input type="date" value={secretEditRecord.date} onChange={e => setSecretEditRecord((p:any) => ({...p, date: e.target.value}))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+                    <option value="103.93.13.182">Zone</option>
+                    <option value="103.93.13.18">Zone (2)</option>
+                    <option value="202.141.254.126">QC Center</option>
+                    <option value="157.10.30.235">QC Center (2)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Date</label>
+                  <input type="date" value={secretEditRecord.date || ''} onChange={e => setSecretEditRecord((p:any) => ({...p, date: e.target.value || ''}))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
               </div>
               <div className="flex gap-3 mt-4">
                 <button onClick={() => setSecretEditRecord(null)} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium">Cancel</button>
