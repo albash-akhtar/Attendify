@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL || '';
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Hum direct values daal rahe hain taake Vercel ka jhanjhat hi khatam ho jaye
+const url = 'https://qefkpawkljalbevkyxtn.supabase.co';
+const key = 'YOUR_SUPABASE_ANON_KEY_HERE'; 
 
-// Agar URL sahi nahi hoga toh client null rahega, app crash nahi karegi!
-export const supabase = url && url.startsWith('http') && key ? createClient(url, key) : null;
+export const supabase = createClient(url, key);
