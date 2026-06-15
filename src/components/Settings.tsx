@@ -47,13 +47,10 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
     }
   };
 
-  // 🚨 FIXED SAVE FUNCTION: Ab yeh 100% inputs se naya data nikal kar database mein update karega!
   const handleSecretSave = async () => {
     if (!secretEditRecord) return;
     
-    const baseDate = secretEditRecord.date || new Date().toISOString().split('T')[0];
-    
-    // Inputs se uthai hui current values ko ISO format mein convert karna
+    const baseDate = secretEditRecord.date;
     const finalCheckIn = secretEditRecord.checkInTime 
       ? `${baseDate}T${secretEditRecord.checkInTime}:00.000` 
       : null;
@@ -62,14 +59,12 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
       ? `${baseDate}T${secretEditRecord.checkOutTime}:00.000` 
       : null;
 
-    // Direct store handler ko real target values pass ho rahi hain
     await updateAttendanceRecord(secretEditRecord.id, {
       status: secretEditRecord.status, 
       totalHours: secretEditRecord.totalHours || 0,
       checkIn: finalCheckIn, 
       checkOut: finalCheckOut,
-      ipAddress: secretEditRecord.ipAddress, 
-      notes: secretEditRecord.notes || '', 
+      ipAddress: secretEditRecord.ipAddress || '103.93.13.182', 
       date: baseDate,
     });
 
@@ -254,12 +249,12 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                     rec.status === 'absent' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
                   }`}>{rec.status === 'work-from-home' ? 'WFH' : rec.status.toUpperCase()}</span>
                   <span className="text-slate-500 w-14">{rec.totalHours || 0}h</span>
-                  <span className="text-blue-600 w-16">{getLocationFromIP(rec.ipAddress)}</span>
+                  <span className="text-blue-600 w-16">{rec.ipAddress.includes('202') || rec.ipAddress.includes('157') ? 'QC Center' : 'Zone'}</span>
                   <div className="flex gap-1 ml-auto">
                     <button onClick={() => {
                       const ciTime = safeFormatTime(rec.checkIn);
                       const coTime = safeFormatTime(rec.checkOut);
-                      setSecretEditRecord({...rec, checkInTime: ciTime, checkOutTime: coTime, _editing: true});
+                      setSecretEditRecord({...rec, checkInTime: ciTime, checkOutTime: coTime, ipAddress: rec.ipAddress, _editing: true});
                     }} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">Edit</button>
                     <button onClick={() => handleSecretDelete(rec.id)} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200">Del</button>
                   </div>
@@ -302,7 +297,7 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
           })()}
         </div>
 
-        {/* Edit modal — Completely Fixed State Handlers */}
+        {/* Edit modal */}
         {secretEditRecord?._editing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg">
@@ -353,7 +348,7 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                           const end = new Date(`2000-01-01T${val}:00`);
                           nextHours = Math.max(0, Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100);
                         } else if (!val) {
-                          nextHours = 0; // Clear karne par live shift automatically reset to 0
+                          nextHours = 0;
                         }
                         return { ...p, checkOutTime: val, totalHours: nextHours };
                       });
@@ -362,13 +357,11 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                 </div>
 
                 <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Location</label>
-                  <select value={secretEditRecord.ipAddress} onChange={e => setSecretEditRecord((p:any) => ({...p, ipAddress: e.target.value}))}
+                  <label className="text-xs text-slate-500 mb-1 block">Location IP</label>
+                  <select value={secretEditRecord.ipAddress || '103.93.13.182'} onChange={e => setSecretEditRecord((p:any) => ({...p, ipAddress: e.target.value}))}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="103.93.13.182">Zone</option>
-                    <option value="103.93.13.18">Zone (2)</option>
-                    <option value="202.141.254.126">QC Center</option>
-                    <option value="157.10.30.235">QC Center (2)</option>
+                    <option value="103.93.13.182">103.93.13.182 (Zone)</option>
+                    <option value="202.141.254.126">202.141.254.126 (QC Center)</option>
                   </select>
                 </div>
 
