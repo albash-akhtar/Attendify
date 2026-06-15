@@ -39,60 +39,28 @@ export function getEmployees(): Employee[] { return cacheGet('c_emp', DEFAULT_EM
 export function getAttendanceEmployees(): Employee[] { return getEmployees().filter(e => e.role !== 'manager'); }
 export function saveEmployees(e: Employee[]) { cacheSet('c_emp', e); }
 
-// Auto-seed and sync with the correct 'users' table in Supabase
 async function syncEmployees() {
   try {
-    const q = db.from('users'); if (!q) return;
-    
-    // Seed default users first to satisfy Foreign Key constraints
-    const seedRows = DEFAULT_EMPLOYEES.map(e => ({
-      id: parseInt(e.id.replace(/^\D+/g, ''), 10),
-      name: e.name,
-      role: e.role,
-      password: e.pin
-    }));
-    await q.upsert(seedRows);
-
+    const q = db.from('employees'); if (!q) return;
     const { data } = await q.select('*');
-    if (data && data.length > 0) {
-      const mapped = data.map((u: any) => ({
-        id: `emp-00${u.id}`,
-        name: u.name,
-        role: u.role,
-        pin: u.password || '1122',
-        avatar: u.name ? u.name.split(' ').map((n: any) => n[0]).join('').toUpperCase() : 'EM'
-      }));
-      cacheSet('c_emp', mapped);
-    }
+    if (data && data.length > 0) cacheSet('c_emp', data);
   } catch {}
 }
 
 export async function addEmployee(emp: Employee) {
   const all = getEmployees(); all.push(emp); cacheSet('c_emp', all);
-  try { 
-    const q = db.from('users'); 
-    const nid = parseInt(emp.id.replace(/^\D+/g, ''), 10) || Math.floor(Math.random() * 1000);
-    if (q) { await q.upsert({ id: nid, name: emp.name, role: emp.role, password: emp.pin }); await syncEmployees(); } 
-  } catch {}
+  try { const q = db.from('employees'); if (q) { await q.upsert({ id: emp.id, name: emp.name, role: emp.role, pin: emp.pin, avatar: emp.avatar }); await syncEmployees(); } } catch {}
 }
 
 export async function updateEmployeePin(empId: string, newPin: string) {
   const all = getEmployees(); const idx = all.findIndex(e => e.id === empId);
   if (idx !== -1) { all[idx].pin = newPin; cacheSet('c_emp', all); }
-  try { 
-    const q = db.from('users'); 
-    const nid = parseInt(empId.replace(/^\D+/g, ''), 10);
-    if (q) { await q.update({ password: newPin }).eq('id', nid); await syncEmployees(); } 
-  } catch {}
+  try { const q = db.from('employees'); if (q) { await q.update({ pin: newPin }).eq('id', empId); await syncEmployees(); } } catch {}
 }
 
 export async function removeEmployee(empId: string) {
   cacheSet('c_emp', getEmployees().filter(e => e.id !== empId));
-  try { 
-    const q = db.from('users'); 
-    const nid = parseInt(empId.replace(/^\D+/g, ''), 10);
-    if (q) { await q.delete().eq('id', nid); await syncEmployees(); } 
-  } catch {}
+  try { const q = db.from('employees'); if (q) { await q.delete().eq('id', empId); await syncEmployees(); } } catch {}
 }
 
 export function getAttendanceRecords(): AttendanceRecord[] { return cacheGet('c_rec', []); }
@@ -105,7 +73,7 @@ async function syncRecords() {
     if (data) {
       cacheSet('c_rec', data.map((r: any) => ({
         id: String(r.id), 
-        employeeId: r.user_id ? `emp-00${r.user_id}` : 'emp-001',
+        employeeId: r.user_id ? `emp-00${r.user_id}` : 'emp-001', 
         date: r.date, 
         checkIn: r.login_time, 
         checkOut: r.login_time, 
@@ -120,29 +88,25 @@ async function syncRecords() {
 }
 
 export async function addAttendanceRecord(record: AttendanceRecord) {
+  const records = getAttendanceRecords();
+  if (records.find(r => r.employeeId === record.employeeId && r.date === record.date)) return;
+  records.push(record); cacheSet('c_rec', records);
+  
   const numericUserId = parseInt(record.employeeId.replace(/^\D+/g, ''), 10) || 1;
   const employees = getEmployees();
   const currentEmp = employees.find(e => e.id === record.employeeId);
 
   try { 
     const q = db.from('attendance_logs'); 
-    if (q) {
-      await q.insert({
-        user_id: numericUserId,
-        user_name: currentEmp ? currentEmp.name : 'Abdul Wahab',
-        date: record.date,
-        status: record.status,
-        login_time: record.checkIn,
-        wifi_connected: record.wifiVerified ? 'true' : 'false'
-      });
-      
-      const records = getAttendanceRecords();
-      if (!records.find(r => r.employeeId === record.employeeId && r.date === record.date)) {
-        records.push(record);
-        cacheSet('c_rec', records);
-      }
-      await syncRecords(); 
-    }
+    if (q) await q.upsert({
+      user_id: numericUserId,
+      user_name: currentEmp ? currentEmp.name : 'Abdul Wahab',
+      date: record.date,
+      status: record.status,
+      login_time: record.checkIn,
+      wifi_connected: record.wifiVerified ? 'true' : 'false'
+    }); 
+    await syncRecords(); 
   } catch {}
 }
 
@@ -171,13 +135,76 @@ export function getTodayRecord(empId: string): AttendanceRecord | undefined {
 }
 
 export function getWFHRequests(): WFHRequest[] { return cacheGet('c_wfh', []); }
+
+async function syncWFH() {
+  try {
+    const q = db.from('wfh_requests'); if (!q) return;
+    const { data } = await q.select('*');
+    if (data) cacheSet('c_wfh', data.map((r: any) => ({
+      id: r.id, employeeId: r.employee_id, date: r.date, reason: r.reason, status: r.status,
+      requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
+    })));
+  } catch {}
+}
+
+export async function addWFHRequest(r: WFHRequest) {
+  const all = getWFHRequests(); all.push(r); cacheSet('c_wfh', all);
+  try { const q = db.from('wfh_requests'); if (q) await q.upsert({
+    id: r.id, employee_id: r.employeeId, date: r.date, reason: r.reason, status: r.status,
+    requested_at: r.requestedAt, reviewed_by: r.reviewedBy, reviewed_at: r.reviewedAt,
+  }); } catch {}
+}
+
+export async function updateWFHRequest(id: string, updates: Partial<WFHRequest>) {
+  const all = getWFHRequests(); const i = all.findIndex(r => r.id === id);
+  if (i !== -1) { all[i] = { ...all[i], ...updates }; cacheSet('c_wfh', all); }
+  try {
+    const q = db.from('wfh_requests'); if (!q) return;
+    const d: any = {};
+    if (updates.status) d.status = updates.status;
+    if (updates.reviewedBy) d.reviewed_by = updates.reviewedBy;
+    if (updates.reviewedAt) d.reviewed_at = updates.reviewedAt;
+    await q.update(d).eq('id', id);
+  } catch {}
+}
+
 export function getTodayWFHRequest(empId: string): WFHRequest | undefined {
   const todayStr = getPKTDateString();
   return getWFHRequests().find(r => r.employeeId === empId && r.date === todayStr);
 }
 export function getPendingWFHRequests(): WFHRequest[] { return getWFHRequests().filter(r => r.status === 'pending'); }
+
 export function getAccountRequests(): AccountRequest[] { return cacheGet('c_acct', []); }
 export function getPendingAccountRequests(): AccountRequest[] { return getAccountRequests().filter(r => r.status === 'pending'); }
+
+async function syncAccountRequests() {
+  try {
+    const q = db.from('account_requests'); if (!q) return;
+    const { data } = await q.select('*');
+    if (data) cacheSet('c_acct', data.map((r: any) => ({
+      id: r.id, name: r.name, pin: r.pin, requestedAt: r.requested_at,
+      status: r.status, approvedRole: r.approved_role, reviewedBy: r.reviewed_by,
+    })));
+  } catch {}
+}
+
+export async function addAccountRequest(r: AccountRequest) {
+  const all = getAccountRequests(); all.push(r); cacheSet('c_acct', all);
+  try { const q = db.from('account_requests'); if (q) await q.upsert({ id: r.id, name: r.name, pin: r.pin, requested_at: r.requestedAt, status: r.status }); } catch {}
+}
+
+export async function updateAccountRequest(id: string, updates: Partial<AccountRequest>) {
+  const all = getAccountRequests(); const i = all.findIndex(r => r.id === id);
+  if (i !== -1) { all[i] = { ...all[i], ...updates }; cacheSet('c_acct', all); }
+  try {
+    const q = db.from('account_requests'); if (!q) return;
+    const d: any = {};
+    if (updates.status) d.status = updates.status;
+    if (updates.approvedRole) d.approved_role = updates.approvedRole;
+    if (updates.reviewedBy) d.reviewed_by = updates.reviewedBy;
+    await q.update(d).eq('id', id);
+  } catch {}
+}
 
 export function getSettings() {
   return cacheGet('c_settings', { officeStartTime: '09:00', lateThresholdMinutes: 15, minHoursForFullDay: 8, minHoursForHalfDay: 4 });
@@ -188,7 +215,36 @@ export interface EmployeeTiming {
   employeeId: string; officeStartTime: string; lateThresholdMinutes: number;
   minHoursForFullDay: number; minHoursForHalfDay: number;
 }
+
 export function getAllEmployeeTimings(): Record<string, EmployeeTiming> { return cacheGet('c_timings', {}); }
+
+async function syncTimings() {
+  try {
+    const q = db.from('employee_timings'); if (!q) return;
+    const { data } = await q.select('*');
+    if (data) {
+      const map: Record<string, EmployeeTiming> = {};
+      data.forEach((r: any) => { map[r.employee_id] = { employeeId: r.employee_id, officeStartTime: r.office_start_time, lateThresholdMinutes: r.late_threshold_minutes, minHoursForFullDay: r.min_hours_full_day, minHoursForHalfDay: r.min_hours_half_day }; });
+      cacheSet('c_timings', map);
+    }
+  } catch {}
+}
+
+export async function saveAllEmployeeTimings(t: Record<string, EmployeeTiming>) {
+  cacheSet('c_timings', t);
+  try {
+    const q = db.from('employee_timings'); if (!q) return;
+    const rows = Object.values(t).map(v => ({ 
+      employee_id: v.employeeId, 
+      office_start_time: v.officeStartTime, 
+      late_threshold_minutes: v.lateThresholdMinutes, 
+      min_hours_full_day: v.minHoursForFullDay, 
+      min_hours_half_day: v.minHoursForHalfDay 
+    }));
+    await q.upsert(rows);
+  } catch {}
+}
+
 export function getEmployeeTiming(empId: string): EmployeeTiming {
   const all = getAllEmployeeTimings(); if (all[empId]) return all[empId];
   const g = getSettings();
@@ -202,13 +258,39 @@ const DEFAULT_ACCESS: Record<string, string[]> = {
   timings:['emp-001'], wfh_approve:['emp-001','emp-005'],
   secret_override:['emp-001'], view_all:['emp-001','emp-005'],
 };
+
 export function getAccessControl(): Record<string, string[]> { return cacheGet('c_access', DEFAULT_ACCESS); }
 export function saveAccessControl(ac: Record<string, string[]>) { cacheSet('c_access', ac); }
 
+async function syncAccess() {
+  try {
+    const q = db.from('access_control'); if (!q) return;
+    const { data } = await q.select('*');
+    if (data && data.length > 0) {
+      const map: Record<string, string[]> = {};
+      data.forEach((r: any) => { if (!map[r.feature]) map[r.feature] = []; map[r.feature].push(r.employee_id); });
+      cacheSet('c_access', map);
+    }
+  } catch {}
+}
+
+export async function grantAccess(empId: string, feature: string) {
+  const ac = getAccessControl(); if (!ac[feature]) ac[feature] = [];
+  if (!ac[feature].includes(empId)) ac[feature].push(empId); cacheSet('c_access', ac);
+  try { const q = db.from('access_control'); if (q) await q.upsert({ feature, employee_id: empId }); } catch {}
+}
+
+export async function revokeAccess(empId: string, feature: string) {
+  const ac = getAccessControl(); if (ac[feature]) ac[feature] = ac[feature].filter(id => id !== empId); cacheSet('c_access', ac);
+  try { const q = db.from('access_control'); if (q) await q.delete().eq('feature', feature).eq('employee_id', empId); } catch {}
+}
+
+export function hasAccess(empId: string, feature: string): boolean { return getAccessControl()[feature]?.includes(empId) || false; }
+export function canSeeOT(empId: string): boolean { return hasAccess(empId, 'ot'); }
+
 export async function syncAll() {
   try {
-    await syncEmployees();
-    await syncRecords();
+    await Promise.all([syncEmployees(), syncRecords(), syncWFH(), syncAccountRequests(), syncTimings(), syncAccess()]);
   } catch {}
 }
 
