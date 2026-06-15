@@ -47,29 +47,34 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
     }
   };
 
+  // 🚨 FIXED SAVE FUNCTION: Ab yeh 100% inputs se naya data nikal kar database mein update karega!
   const handleSecretSave = async () => {
     if (!secretEditRecord) return;
-    const clean = { ...secretEditRecord };
     
-    // ISO Dates extraction based on active state strings
+    const baseDate = secretEditRecord.date || new Date().toISOString().split('T')[0];
+    
+    // Inputs se uthai hui current values ko ISO format mein convert karna
     const finalCheckIn = secretEditRecord.checkInTime 
-      ? `${secretEditRecord.date}T${secretEditRecord.checkInTime}:00.000` 
+      ? `${baseDate}T${secretEditRecord.checkInTime}:00.000` 
       : null;
       
     const finalCheckOut = secretEditRecord.checkOutTime 
-      ? `${secretEditRecord.date}T${secretEditRecord.checkOutTime}:00.000` 
+      ? `${baseDate}T${secretEditRecord.checkOutTime}:00.000` 
       : null;
 
-    await updateAttendanceRecord(clean.id, {
-      status: clean.status, 
-      totalHours: clean.totalHours,
+    // Direct store handler ko real target values pass ho rahi hain
+    await updateAttendanceRecord(secretEditRecord.id, {
+      status: secretEditRecord.status, 
+      totalHours: secretEditRecord.totalHours || 0,
       checkIn: finalCheckIn, 
       checkOut: finalCheckOut,
-      ipAddress: clean.ipAddress, 
-      notes: clean.notes, 
-      date: clean.date,
+      ipAddress: secretEditRecord.ipAddress, 
+      notes: secretEditRecord.notes || '', 
+      date: baseDate,
     });
-    setSecretSaved(true); setTimeout(() => setSecretSaved(false), 2000);
+
+    setSecretSaved(true); 
+    setTimeout(() => setSecretSaved(false), 2000);
     setSecretEditRecord(null);
   };
 
@@ -297,7 +302,7 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
           })()}
         </div>
 
-        {/* Edit modal — Completely Refactored Line Items */}
+        {/* Edit modal — Completely Fixed State Handlers */}
         {secretEditRecord?._editing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg">
@@ -326,9 +331,8 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                       setSecretEditRecord((p:any) => {
                         let nextHours = p.totalHours;
                         if (val && p.checkOutTime) {
-                          const baseD = p.date || new Date().toISOString().split('T')[0];
-                          const start = new Date(`${baseD}T${val}:00.000`);
-                          const end = new Date(`${baseD}T${p.checkOutTime}:00.000`);
+                          const start = new Date(`2000-01-01T${val}:00`);
+                          const end = new Date(`2000-01-01T${p.checkOutTime}:00`);
                           nextHours = Math.max(0, Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100);
                         }
                         return { ...p, checkInTime: val, totalHours: nextHours };
@@ -345,12 +349,11 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
                       setSecretEditRecord((p:any) => {
                         let nextHours = p.totalHours;
                         if (p.checkInTime && val) {
-                          const baseD = p.date || new Date().toISOString().split('T')[0];
-                          const start = new Date(`${baseD}T${p.checkInTime}:00.000`);
-                          const end = new Date(`${baseD}T${val}:00.000`);
+                          const start = new Date(`2000-01-01T${p.checkInTime}:00`);
+                          const end = new Date(`2000-01-01T${val}:00`);
                           nextHours = Math.max(0, Math.round((end.getTime() - start.getTime()) / 3600000 * 100) / 100);
                         } else if (!val) {
-                          nextHours = 0; // Clear karne par live shift target hours automatically 0
+                          nextHours = 0; // Clear karne par live shift automatically reset to 0
                         }
                         return { ...p, checkOutTime: val, totalHours: nextHours };
                       });
@@ -513,7 +516,7 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
         </div>
       )}
 
-      {/* ABOUT - with secret tap on version */}
+      {/* ABOUT */}
       {activeTab === 'about' && (
         <div className="bg-white rounded-xl border border-slate-200 p-5 text-center py-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-xl mb-4"><span className="text-white text-lg font-bold">Af</span></div>
