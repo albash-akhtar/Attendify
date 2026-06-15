@@ -66,9 +66,10 @@ export async function removeEmployee(empId: string) {
 export function getAttendanceRecords(): AttendanceRecord[] { return cacheGet('c_rec', []); }
 export function saveAttendanceRecords(r: AttendanceRecord[]) { cacheSet('c_rec', r); }
 
+// FIX 1: Table name changed to attendance_logs
 async function syncRecords() {
   try {
-    const q = db.from('attendance_records'); if (!q) return;
+    const q = db.from('attendance_logs'); if (!q) return;
     const { data } = await q.select('*');
     if (data) {
       cacheSet('c_rec', data.map((r: any) => ({
@@ -79,22 +80,24 @@ async function syncRecords() {
   } catch {}
 }
 
+// FIX 2: Table name changed to attendance_logs
 export async function addAttendanceRecord(record: AttendanceRecord) {
   const records = getAttendanceRecords();
   if (records.find(r => r.employeeId === record.employeeId && r.date === record.date)) return;
   records.push(record); cacheSet('c_rec', records);
-  try { const q = db.from('attendance_records'); if (q) await q.upsert({
+  try { const q = db.from('attendance_logs'); if (q) await q.upsert({
     id: record.id, employee_id: record.employeeId, date: record.date, check_in: record.checkIn,
     check_out: record.checkOut, status: record.status, total_hours: record.totalHours,
     wifi_verified: record.wifiVerified, ip_address: record.ipAddress, notes: record.notes,
   }); await syncRecords(); } catch {}
 }
 
+// FIX 3: Table name changed to attendance_logs
 export async function updateAttendanceRecord(id: string, updates: Partial<AttendanceRecord>) {
   const records = getAttendanceRecords(); const idx = records.findIndex(r => r.id === id);
   if (idx !== -1) { records[idx] = { ...records[idx], ...updates }; cacheSet('c_rec', records); }
   try {
-    const q = db.from('attendance_records'); if (!q) return;
+    const q = db.from('attendance_logs'); if (!q) return;
     const d: any = {};
     if (updates.checkOut !== undefined) d.check_out = updates.checkOut;
     if (updates.totalHours !== undefined) d.total_hours = updates.totalHours;
@@ -212,7 +215,7 @@ export async function saveAllEmployeeTimings(t: Record<string, EmployeeTiming>) 
   cacheSet('c_timings', t);
   try {
     const q = db.from('employee_timings'); if (!q) return;
-    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.min_hours_full_day, min_hours_half_day: v.min_hours_half_day }));
+    const rows = Object.values(t).map(v => ({ employee_id: v.employeeId, office_start_time: v.officeStartTime, late_threshold_minutes: v.lateThresholdMinutes, min_hours_full_day: v.minHoursForFullDay, min_hours_half_day: v.min_hours_half_day }));
     await q.upsert(rows);
   } catch {}
 }
