@@ -140,8 +140,7 @@ export async function updateAttendanceRecord(id: string, updates: Partial<Attend
     if (updates.totalHours !== undefined) d.total_hours = updates.totalHours;
     if (updates.notes !== undefined) d.notes = updates.notes;
     
-    await q.update(d).eq('user_id', numericUserId).eq('date', targetRecord.date);
-    await syncRecords();
+    await q.update(d).eq('id', id);
   } catch {}
 }
 
