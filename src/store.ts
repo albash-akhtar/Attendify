@@ -1,5 +1,11 @@
-import { supabase } from './supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 import { Employee, AttendanceRecord, WFHRequest, AccountRequest } from './types';
+
+// Aapka Correct Supabase URL aur API Key
+const url = 'https://gefkpawkljalbevkxytn.supabase.co';
+const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlZmtwYXdrbGphbGJldmt4eXRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNjQ5ODgsImV4cCI6MjA5Njk0MDk4OH0.2MC8c4HpKYbBfO_0FCE53_nnwkN7nhqjYIAbvKGHSZE';
+
+export const supabase = createClient(url, key);
 
 const db = {
   from: (table: string) => {
@@ -76,12 +82,13 @@ async function syncRecords() {
         employeeId: r.user_id ? `emp-00${r.user_id}` : 'emp-001', 
         date: r.date, 
         checkIn: r.login_time, 
-        checkOut: r.login_time, 
+        // 🚨 YAHAN ASLI FIX HAI: Agar logout_time aur login_time same hain, toh isay null samjho taake shift live rahe!
+        checkOut: (r.logout_time && r.logout_time !== r.login_time) ? r.logout_time : null, 
         status: r.status || 'present', 
-        totalHours: 0, 
+        totalHours: r.total_hours || 0, 
         wifiVerified: r.wifi_connected === 'true' || r.wifi_connected === true, 
         ipAddress: 'Office', 
-        notes: '',
+        notes: r.notes || '',
       })));
     }
   } catch {}
@@ -104,6 +111,8 @@ export async function addAttendanceRecord(record: AttendanceRecord) {
       date: record.date,
       status: record.status,
       login_time: record.checkIn,
+      logout_time: record.checkOut,
+      total_hours: record.totalHours,
       wifi_connected: record.wifiVerified ? 'true' : 'false'
     }); 
     await syncRecords(); 
@@ -123,6 +132,13 @@ export async function updateAttendanceRecord(id: string, updates: Partial<Attend
     const d: any = {};
     if (updates.status !== undefined) d.status = updates.status;
     if (updates.checkIn !== undefined) d.login_time = updates.checkIn;
+    
+    // 🚨 Agar Check-Out clear kiya gaya hai, toh DB mein explicit null push karo
+    if (updates.checkOut !== undefined) {
+      d.logout_time = updates.checkOut === null ? null : updates.checkOut;
+    }
+    if (updates.totalHours !== undefined) d.total_hours = updates.totalHours;
+    if (updates.notes !== undefined) d.notes = updates.notes;
     
     await q.update(d).eq('user_id', numericUserId).eq('date', targetRecord.date);
     await syncRecords();
