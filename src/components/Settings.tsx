@@ -232,8 +232,9 @@ export default function Settings({ currentUser, onLogout }: SettingsProps) {
               className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="space-y-1 max-h-96 overflow-y-auto">
-            {filtered.sort((a,b) => b.date.localeCompare(a.date)).map(rec => {
-              const emp = employees.find(e => e.id === r.employeeId || e.id === rec.employeeId);
+            {filtered.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(rec => {
+              // 🚨 YEHI ERROR THA! Maine ghalti se 'r.employeeId' likh diya tha pichli baar jisne crash karaya. Ab theek hai.
+              const emp = employees.find(e => e.id === rec.employeeId);
               return (
                 <div key={rec.id} className="flex flex-wrap items-center gap-2 py-2 px-3 bg-slate-50 rounded-lg text-xs">
                   <span className="font-medium text-slate-700 w-28 truncate">{emp?.name || rec.employeeId}</span>
